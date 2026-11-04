@@ -1,0 +1,70 @@
+{
+  "revela/hero": {
+    "path": "/work/revela/hero.webp",
+    "width": 1600,
+    "height": 800,
+    "bytes": 42586
+  },
+  "revela/workspace-poster": {
+    "path": "/work/revela/media/workspace-poster.webp",
+    "width": 480,
+    "height": 270,
+    "bytes": 58800
+  },
+  "revela/workspace-video": {
+    "mp4": {
+      "path": "/work/revela/media/workspace.mp4",
+      "bytes": 3528006
+    },
+    "webm": {
+      "path": "/work/revela/media/workspace.webm",
+      "bytes": 1886979
+    }
+  },
+  "revela/branding-poster": {
+    "path": "/work/revela/media/branding-poster.webp",
+    "width": 480,
+    "height": 270,
+    "bytes": 54062
+  },
+  "revela/branding-video": {
+    "mp4": {
+      "path": "/work/revela/media/branding.mp4",
+      "bytes": 2793821
+    },
+    "webm": {
+      "path": "/work/revela/media/branding.webm",
+      "bytes": 1523590
+    }
+  },
+  "robupay/card": {
+    "path": "/work/robupay/card-checkout.webp",
+    "width": 1600,
+    "height": 793,
+    "bytes": 34612
+  },
+  "robupay/01-overview": {
+    "path": "/work/robupay/screens/01-overview.webp",
+    "width": 1600,
+    "height": 862,
+    "bytes": 67888
+  },
+  "robupay/02-checkout": {
+    "path": "/work/robupay/screens/02-checkout.webp",
+    "width": 1600,
+    "height": 793,
+    "bytes": 34612
+  },
+  "robupay/03-merchant": {
+    "path": "/work/robupay/screens/03-merchant-dashboard.webp",
+    "width": 1600,
+    "height": 780,
+    "bytes": 49948
+  },
+  "robupay/04-admin": {
+    "path": "/work/robupay/screens/04-admin.webp",
+    "width": 1600,
+    "height": 918,
+    "bytes": 54146
+  }
+}
