@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent, Suspense } from 'react';
+import { useRef, useState, FormEvent, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Tag } from '@/components/ui/Tag';
@@ -15,133 +15,66 @@ const OPPORTUNITY_OPTIONS = [
 ] as const;
 
 type OpportunityType = (typeof OPPORTUNITY_OPTIONS)[number];
+type Status = 'idle' | 'sending' | 'success' | 'error';
 
-interface FormData {
-  name: string;
-  email: string;
-  organisation: string;
-  opportunityType: OpportunityType;
-  message: string;
-  honeypot: string; // Anti-spam hidden trap
-}
+const SERVICE_TO_OPPORTUNITY: Record<string, OpportunityType> = {
+  'product-design': 'Freelance or contract product design',
+  branding: 'Branding project',
+  'social-media-design': 'Social media design',
+  'graphic-design': 'Graphic design project',
+};
 
-interface FormErrors {
-  name?: string;
-  email?: string;
-  organisation?: string;
-  opportunityType?: string;
-  message?: string;
-}
-
-function ContactFormInner() {
+function ContactForm() {
   const searchParams = useSearchParams();
   const serviceParam = searchParams.get('service');
+  const defaultOpportunity =
+    (serviceParam && SERVICE_TO_OPPORTUNITY[serviceParam]) || OPPORTUNITY_OPTIONS[0];
 
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    organisation: '',
-    opportunityType: 'Full-time Product Designer role',
-    message: '',
-    honeypot: '',
-  });
-
-  const [timeMounted, setTimeMounted] = useState<number>(0);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<Status>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
   const [successData, setSuccessData] = useState<{ name: string; email: string } | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const lastAttempt = useRef<Record<string, string>>({});
 
-  // Record mount timestamp for minimum time-to-submit verification
-  useEffect(() => {
-    setTimeMounted(Date.now());
-  }, []);
-
-  // Pre-select opportunity type if query parameter is provided
-  useEffect(() => {
-    if (serviceParam) {
-      if (serviceParam === 'product-design') {
-        setFormData((prev) => ({ ...prev, opportunityType: 'Freelance or contract product design' }));
-      } else if (serviceParam === 'branding') {
-        setFormData((prev) => ({ ...prev, opportunityType: 'Branding project' }));
-      } else if (serviceParam === 'social-media-design') {
-        setFormData((prev) => ({ ...prev, opportunityType: 'Social media design' }));
-      } else if (serviceParam === 'graphic-design') {
-        setFormData((prev) => ({ ...prev, opportunityType: 'Graphic design project' }));
-      }
-    }
-  }, [serviceParam]);
-
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = 'Please provide your full name.';
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Please provide your work email.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address.';
-    }
-
-    if (!formData.organisation.trim()) {
-      newErrors.organisation = 'Please provide your company or organisation.';
-    }
-
-    if (!formData.message.trim() || formData.message.trim().length < 15) {
-      newErrors.message = 'Please share a brief note about the project or role (min 15 characters).';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setServerError(null);
+    setStatus('sending');
+    setErrorMessage('');
 
-    // Spam honeypot trap
-    if (formData.honeypot) {
-      setSuccessData({ name: formData.name, email: formData.email });
+    const form = e.currentTarget;
+    const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
+    lastAttempt.current = data;
+
+    // Honeypot: behave like a successful send without emailing anyone.
+    if (data.website) {
+      setSuccessData({ name: data.name ?? '', email: data.email ?? '' });
+      setStatus('success');
       return;
     }
-
-    if (!validate()) {
-      return;
-    }
-
-    setSubmitting(true);
 
     try {
       const response = await fetch('/api/contact', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          timeMounted,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
       });
-
-      const data = await response.json();
+      const result = await response.json();
 
       if (!response.ok) {
-        setServerError(
-          data.error || 'Unable to submit your message. Please reach out directly via email.'
-        );
-      } else {
-        setSuccessData({ name: formData.name, email: formData.email });
+        throw new Error(result.error || 'Request failed');
       }
-    } catch {
-      setServerError(
-        'A network connection error occurred while submitting. Please send your enquiry directly via email.'
-      );
-    } finally {
-      setSubmitting(false);
+
+      setSuccessData({ name: data.name ?? '', email: data.email ?? '' });
+      setStatus('success');
+      form.reset();
+    } catch (err) {
+      setStatus('error');
+      setErrorMessage(err instanceof Error ? err.message : 'Something went wrong.');
     }
   };
+
+  const sending = status === 'sending';
+  const fallbackName = lastAttempt.current.name || 'New Client';
+  const fallbackMessage = lastAttempt.current.message || '';
 
   return (
     <div className="bg-paper border border-line rounded-card p-6 sm:p-10 shadow-card">
@@ -162,15 +95,8 @@ function ContactFormInner() {
               type="button"
               onClick={() => {
                 setSuccessData(null);
-                setFormData({
-                  name: '',
-                  email: '',
-                  organisation: '',
-                  opportunityType: 'Full-time Product Designer role',
-                  message: '',
-                  honeypot: '',
-                });
-                setTimeMounted(Date.now());
+                setStatus('idle');
+                setErrorMessage('');
               }}
               className="font-mono text-xs text-vermilion-deep underline uppercase tracking-label font-bold"
             >
@@ -179,21 +105,19 @@ function ContactFormInner() {
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} noValidate className="space-y-6">
-          {/* Honeypot hidden input */}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Honeypot: hidden from people and screen readers */}
           <input
             type="text"
-            name="honeypot"
-            value={formData.honeypot}
-            onChange={(e) => setFormData({ ...formData, honeypot: e.target.value })}
-            className="hidden"
+            name="website"
             tabIndex={-1}
             autoComplete="off"
             aria-hidden="true"
+            style={{ position: 'absolute', left: '-9999px' }}
           />
 
-          {/* Server / Service Alert */}
-          {serverError && (
+          {/* Server Alert */}
+          {status === 'error' && (
             <div
               role="alert"
               className="p-4 rounded-field bg-red-50 border border-red-200 text-left space-y-2"
@@ -201,13 +125,13 @@ function ContactFormInner() {
               <div className="flex items-center gap-2 text-vermilion-deep font-sans text-xs font-bold">
                 <span>⚠ Submission Failed</span>
               </div>
-              <p className="font-sans text-xs text-ink">{serverError}</p>
+              <p className="font-sans text-xs text-ink">{errorMessage}</p>
               <p className="font-sans text-xs text-stone">
                 You can email me directly at{' '}
                 <a
                   href={`mailto:umeakukachinazor@gmail.com?subject=${encodeURIComponent(
-                    `[Portfolio Enquiry - ${formData.name || 'New Client'}]`
-                  )}&body=${encodeURIComponent(formData.message)}`}
+                    `[Portfolio Enquiry - ${fallbackName}]`
+                  )}&body=${encodeURIComponent(fallbackMessage)}`}
                   className="font-semibold text-vermilion-deep underline"
                 >
                   umeakukachinazor@gmail.com
@@ -226,22 +150,13 @@ function ContactFormInner() {
             </label>
             <input
               id="contact-name"
+              name="name"
               type="text"
               required
+              maxLength={100}
               placeholder="e.g. Alex Morgan"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className={`w-full h-12 px-4 rounded-field bg-paper border font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink ${
-                errors.name ? 'border-vermilion bg-red-50/20' : 'border-line'
-              }`}
-              aria-invalid={errors.name ? 'true' : 'false'}
-              aria-describedby={errors.name ? 'name-error' : undefined}
+              className="w-full h-12 px-4 rounded-field bg-paper border border-line font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink"
             />
-            {errors.name && (
-              <p id="name-error" className="mt-1 text-xs font-sans text-vermilion-deep flex items-center gap-1">
-                <span>⚠</span> {errors.name}
-              </p>
-            )}
           </div>
 
           {/* Work Email field */}
@@ -254,22 +169,13 @@ function ContactFormInner() {
             </label>
             <input
               id="contact-email"
+              name="email"
               type="email"
               required
+              maxLength={200}
               placeholder="alex@company.com"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full h-12 px-4 rounded-field bg-paper border font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink ${
-                errors.email ? 'border-vermilion bg-red-50/20' : 'border-line'
-              }`}
-              aria-invalid={errors.email ? 'true' : 'false'}
-              aria-describedby={errors.email ? 'email-error' : undefined}
+              className="w-full h-12 px-4 rounded-field bg-paper border border-line font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink"
             />
-            {errors.email && (
-              <p id="email-error" className="mt-1 text-xs font-sans text-vermilion-deep flex items-center gap-1">
-                <span>⚠</span> {errors.email}
-              </p>
-            )}
           </div>
 
           {/* Organisation field */}
@@ -282,22 +188,13 @@ function ContactFormInner() {
             </label>
             <input
               id="contact-org"
+              name="company"
               type="text"
               required
+              maxLength={150}
               placeholder="e.g. Acme Health"
-              value={formData.organisation}
-              onChange={(e) => setFormData({ ...formData, organisation: e.target.value })}
-              className={`w-full h-12 px-4 rounded-field bg-paper border font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink ${
-                errors.organisation ? 'border-vermilion bg-red-50/20' : 'border-line'
-              }`}
-              aria-invalid={errors.organisation ? 'true' : 'false'}
-              aria-describedby={errors.organisation ? 'org-error' : undefined}
+              className="w-full h-12 px-4 rounded-field bg-paper border border-line font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink"
             />
-            {errors.organisation && (
-              <p id="org-error" className="mt-1 text-xs font-sans text-vermilion-deep flex items-center gap-1">
-                <span>⚠</span> {errors.organisation}
-              </p>
-            )}
           </div>
 
           {/* Opportunity Type Dropdown */}
@@ -310,10 +207,10 @@ function ContactFormInner() {
             </label>
             <select
               id="contact-type"
-              value={formData.opportunityType}
-              onChange={(e) =>
-                setFormData({ ...formData, opportunityType: e.target.value as OpportunityType })
-              }
+              name="opportunity"
+              required
+              key={defaultOpportunity}
+              defaultValue={defaultOpportunity}
               className="w-full h-12 px-4 rounded-field bg-paper border border-line font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink"
             >
               {OPPORTUNITY_OPTIONS.map((opt) => (
@@ -334,33 +231,24 @@ function ContactFormInner() {
             </label>
             <textarea
               id="contact-msg"
+              name="message"
               required
-              rows={4}
+              minLength={15}
               maxLength={3000}
+              rows={4}
               placeholder="Share a short summary of the product challenge, scope, or timeline..."
-              value={formData.message}
-              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-              className={`w-full p-4 rounded-field bg-paper border font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink ${
-                errors.message ? 'border-vermilion bg-red-50/20' : 'border-line'
-              }`}
-              aria-invalid={errors.message ? 'true' : 'false'}
-              aria-describedby={errors.message ? 'msg-error' : undefined}
+              className="w-full p-4 rounded-field bg-paper border border-line font-sans text-sm text-ink transition-colors focus:outline-none focus:border-ink"
             />
-            {errors.message && (
-              <p id="msg-error" className="mt-1 text-xs font-sans text-vermilion-deep flex items-center gap-1">
-                <span>⚠</span> {errors.message}
-              </p>
-            )}
           </div>
 
           {/* Submit button */}
           <div>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={sending}
               className="w-full h-12 bg-ink text-cream rounded-button font-sans text-sm font-semibold hover:bg-vermilion-deep transition-colors duration-150 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Sending…' : 'Send Message'}
+              {sending ? 'Sending…' : 'Send Message'}
             </button>
           </div>
         </form>
@@ -435,7 +323,7 @@ export default function ContactPage() {
         {/* Right Column: Validated Contact Form (7 cols) with Suspense boundary */}
         <div className="lg:col-span-7">
           <Suspense fallback={<div className="p-10 bg-paper border border-line rounded-card text-center font-mono text-xs">Loading form...</div>}>
-            <ContactFormInner />
+            <ContactForm />
           </Suspense>
         </div>
       </div>
